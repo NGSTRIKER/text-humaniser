@@ -203,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.input and Path(args.input).suffix.lower() in (".md", ".markdown"):
             # Markdown: only prose is rewritten; headings, code, lists, tables stay exact.
-            result = pipeline._rewrite_markdown(text, config.intensity.value, config.seed)
+            result = pipeline._rewrite_markdown(text, config.intensity.value, config.seed, protected_terms=args.protect)
         else:
             result = pipeline.rewrite_text(request)
     finally:

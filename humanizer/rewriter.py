@@ -94,18 +94,29 @@ class RewriterPipeline:
         chunk_results: list[ChunkResult] = []
         success_count = 0
 
-        memory_failure = False
+        backend_unavailable = False
+        backend_unavail_reason = ""
         for chunk in chunks:
-            if memory_failure:  # don't hammer a model that cannot load
+            if backend_unavailable:  # don't hammer an unreachable/missing backend
                 cr = ChunkResult(chunk=chunk, rewritten_text=self._fallback(chunk, edits, structured),
-                                 success=False, error="skipped after memory error", model=self.config.model_name)
+                                 success=False, error=f"skipped: {backend_unavail_reason}",
+                                 model=self.config.model_name, source="rules")
             elif structured:
                 cr = self._rewrite_chunk_structured(chunk, edits, request)
             else:
                 cr = self._rewrite_chunk(chunk, system, request.seed)
                 if cr.success:
                     cr = self._validate_chunk(cr, chunk.text, None)
-            memory_failure = memory_failure or (cr.error or "").startswith("memory:")
+            err = (cr.error or "").lower()
+            if not cr.success and (
+                err.startswith("memory:")
+                or "connect" in err
+                or "not running" in err
+                or "not installed" in err
+                or "not found" in err
+            ):
+                backend_unavailable = True
+                backend_unavail_reason = cr.error or "backend unavailable"
             chunk_results.append(cr)
             if cr.success:
                 success_count += 1
@@ -169,6 +180,7 @@ class RewriterPipeline:
         *,
         intensity: Optional[str] = None,
         seed: Optional[int] = None,
+        protected_terms: Optional[list[str]] = None,
     ) -> RewriteResult:
         """Read a file, rewrite it, and optionally write the result.
 
@@ -177,6 +189,7 @@ class RewriterPipeline:
             output_path: Where to write the result.  ``None`` = don't write.
             intensity: Override the configured intensity.
             seed: Override the configured seed.
+            protected_terms: Specific phrases that must not be changed.
 
         Returns:
             The :class:`RewriteResult`.
@@ -193,9 +206,9 @@ class RewriterPipeline:
         level = intensity or self.config.intensity.value
         seed = seed if seed is not None else self.config.seed
         if input_path.suffix.lower() in (".md", ".markdown"):
-            result = self._rewrite_markdown(text, level, seed)
+            result = self._rewrite_markdown(text, level, seed, protected_terms=protected_terms)
         else:
-            result = self.rewrite_text(RewriteRequest(text=text, intensity=level, seed=seed))
+            result = self.rewrite_text(RewriteRequest(text=text, intensity=level, seed=seed, protected_terms=protected_terms or []))
 
         if output_path is not None:
             output_path = Path(output_path)
@@ -205,7 +218,13 @@ class RewriterPipeline:
 
         return result
 
-    def _rewrite_markdown(self, text: str, intensity: str, seed: Optional[int]) -> RewriteResult:
+    def _rewrite_markdown(
+        self,
+        text: str,
+        intensity: str,
+        seed: Optional[int],
+        protected_terms: Optional[list[str]] = None,
+    ) -> RewriteResult:
         """Rewrite only prose; headings, code, lists, tables etc. stay exact.
 
         Consecutive prose paragraphs are rewritten together so the model and
@@ -214,19 +233,47 @@ class RewriterPipeline:
 
         t0 = time.monotonic()
         out: list[str] = []
+        rule_out: list[str] = []
         group: list[str] = []
         all_edits: list[EditRecord] = []
         chunk_results: list[ChunkResult] = []
         statuses: list[RewriteStatus] = []
+        cursor = 0
 
         def flush() -> None:
+            nonlocal cursor
             if not group:
                 return
             prose = "\n\n".join(group)
+            combined_protected = list(dict.fromkeys((protected_terms or []) + protected_inline(prose)))
             res = self.rewrite_text(RewriteRequest(
-                text=prose, intensity=intensity, seed=seed, protected_terms=protected_inline(prose)))
+                text=prose, intensity=intensity, seed=seed, protected_terms=combined_protected))
             out.append(res.rewritten_text.strip())
-            all_edits.extend(res.edits)
+            rule_out.append(res.rule_text.strip() if res.rule_text else res.rewritten_text.strip())
+
+            pos = text.find(prose, cursor)
+            if pos != -1:
+                cursor = pos + len(prose)
+                for e in res.edits:
+                    all_edits.append(EditRecord(
+                        edit_id=e.edit_id,
+                        rule_id=e.rule_id,
+                        transform_type=e.transform_type,
+                        char_start=e.char_start + pos,
+                        char_end=e.char_end + pos,
+                        original_span=e.original_span,
+                        replacement=e.replacement,
+                        reason=e.reason,
+                        confidence=e.confidence,
+                        semantic_risk=e.semantic_risk,
+                        selection_probability=e.selection_probability,
+                        accepted=e.accepted,
+                        rejection_reason=e.rejection_reason,
+                        user_decision=e.user_decision,
+                    ))
+            else:
+                all_edits.extend(res.edits)
+
             chunk_results.extend(res.chunk_results)
             statuses.append(res.status)
             group.clear()
@@ -237,6 +284,7 @@ class RewriterPipeline:
             else:
                 flush()
                 out.append(block.text)
+                rule_out.append(block.text)
         flush()
         if not statuses or all(s == RewriteStatus.SUCCESS for s in statuses):
             status = RewriteStatus.SUCCESS if statuses else RewriteStatus.SKIPPED
@@ -249,6 +297,7 @@ class RewriterPipeline:
             original_text=text, rewritten_text="\n\n".join(out) + "\n", status=status,
             chunk_results=chunk_results, total_chunks=len(chunk_results), successful_chunks=ok,
             duration_seconds=time.monotonic() - t0, edits=all_edits,
+            rule_text="\n\n".join(rule_out) + "\n",
         )
 
     # ── Internals ────────────────────────────────────────────────

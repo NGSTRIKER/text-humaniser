@@ -102,17 +102,26 @@ def dispensable_ranges(text: str) -> list[tuple[int, int]]:
     redundant modifiers such as "in order", "end" in "end result")."""
     import re
     from humanizer.analyzer import FILLER_PHRASES
-    from humanizer.transformations.redundancy import PATTERNS
+    from humanizer.transformations.redundancy import PATTERNS as REDUNDANCY_PATTERNS
+    from humanizer.transformations.wordiness import PATTERNS as WORDINESS_PATTERNS
+    from humanizer.transformations.phrases import ITEMS as PHRASE_ITEMS
 
     out: list[tuple[int, int]] = []
     low = text.lower()
     for phrase in FILLER_PHRASES:
         for m in re.finditer(r"(?<!\w)" + re.escape(phrase) + r"(?!\w)", low):
             out.append((m.start(), m.end()))
-    for p in PATTERNS:
+    for p in REDUNDANCY_PATTERNS:
         for m in re.finditer(r"(?<!\w)" + p.pattern + r"(?!\w)", low):
             if m.start() < m.start(1):
                 out.append((m.start(), m.start(1)))
             if m.end(1) < m.end():
                 out.append((m.end(1), m.end()))
+    for wp in WORDINESS_PATTERNS:
+        for m in re.finditer(r"(?<!\w)(?:" + wp.pattern + r")(?!\w)", low):
+            out.append((m.start(), m.end()))
+    for item in PHRASE_ITEMS:
+        verbs = "|".join(sorted(set(item.forms), key=len, reverse=True))
+        for m in re.finditer(r"(?<!\w)(?:" + verbs + r") " + item.tail + r"(?!\w)", low):
+            out.append((m.start(), m.end()))
     return out

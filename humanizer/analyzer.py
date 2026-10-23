@@ -273,12 +273,8 @@ class DocumentAnalysis:
 
 
 @lru_cache(maxsize=4)
-def load_nlp(model: str = DEFAULT_MODEL) -> Any:
-    """Load (and cache) a spaCy pipeline.
-
-    Raises:
-        AnalyzerUnavailableError: with install instructions if missing.
-    """
+def _load_nlp_cached(model: str) -> Any:
+    """Internal cached loader for a spaCy pipeline."""
     try:
         import spacy
     except ImportError as exc:  # pragma: no cover - depends on env
@@ -296,7 +292,23 @@ def load_nlp(model: str = DEFAULT_MODEL) -> Any:
     return nlp
 
 
-def is_available(model: str = DEFAULT_MODEL) -> bool:
+def load_nlp(model: Optional[str] = None) -> Any:
+    """Load (and cache) a spaCy pipeline.
+
+    Normalizes default model parameter so the model is never loaded twice.
+
+    Raises:
+        AnalyzerUnavailableError: with install instructions if missing.
+    """
+    target = model or DEFAULT_MODEL
+    return _load_nlp_cached(target)
+
+
+load_nlp.cache_clear = _load_nlp_cached.cache_clear  # type: ignore[attr-defined]
+load_nlp.cache_info = _load_nlp_cached.cache_info  # type: ignore[attr-defined]
+
+
+def is_available(model: Optional[str] = None) -> bool:
     """True if spaCy and the model can be loaded."""
     try:
         load_nlp(model)

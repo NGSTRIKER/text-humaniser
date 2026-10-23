@@ -42,6 +42,13 @@ def _present_able(ctx: RuleContext, start: int, end: int) -> Optional[str]:
     return None if word in {"is", "are", "am"} else "only present tense maps safely to 'can'"
 
 
+def _standalone_have(ctx: RuleContext, start: int, end: int) -> Optional[str]:
+    prev = ctx.token_before(start)
+    if prev and (prev.lemma.lower() in {"do", "will", "would", "shall", "may", "might", "could", "to"} or prev.pos == "AUX" or prev.tag == "MD" or prev.text.lower() in {"not", "n't"}):
+        return "preceded by auxiliary or modal"
+    return None
+
+
 def _sentence_initial_or_clause(ctx: RuleContext, start: int, end: int) -> Optional[str]:
     before = ctx.text[:start].rstrip()
     if not before or before[-1] in ".!?;:,":
@@ -81,9 +88,17 @@ PATTERNS: tuple[WordyPattern, ...] = (
     WordyPattern("in_close_proximity_to", r"in close proximity to", "near", 0.85, 0.08, 0.7),
     WordyPattern("a_large_number_of", r"a large number of|a great number of", "many", 0.85, 0.08, 0.6),
     WordyPattern("a_majority_of", r"the majority of|a majority of", "most", 0.75, 0.12, 0.5),
-    WordyPattern("has_the_ability_to", r"(?:has|have) the ability to", "can", 0.8, 0.1, 0.6),
+    WordyPattern("has_the_ability_to", r"(?:has|have) the ability to", "can", 0.8, 0.1, 0.6, _standalone_have),
     WordyPattern("is_able_to", r"(?:is|are|am) able to", "can", 0.75, 0.12, 0.5, _present_able, Intensity.MODERATE),
-    WordyPattern("it_is_important_to_note_that", r"it is important to note that|it should be noted that|it is worth noting that", "", 0.75, 0.12, 0.7, _sentence_initial_or_clause, Intensity.MODERATE),
+    WordyPattern("until_such_time_as", r"until such time as", "until", 0.85, 0.05, 0.7),
+    WordyPattern("in_view_of_the_fact_that", r"in view of the fact that|for the reason that|on the grounds that", "because", 0.9, 0.05, 0.8),
+    WordyPattern("find_it_difficult_to", r"find it difficult to", "struggle to", 0.8, 0.08, 0.6, None, Intensity.MODERATE),
+    WordyPattern("finds_it_difficult_to", r"finds it difficult to", "struggles to", 0.8, 0.08, 0.6, None, Intensity.MODERATE),
+    WordyPattern("found_it_difficult_to", r"found it difficult to", "struggled to", 0.8, 0.08, 0.6, None, Intensity.MODERATE),
+    WordyPattern("the_utilization_of", r"the (?:utilization|usage) of", "using", 0.75, 0.1, 0.6, None, Intensity.MODERATE),
+    WordyPattern("with_the_exception_of", r"with the exception of", "except for", 0.85, 0.05, 0.6),
+    WordyPattern("in_the_majority_of_cases", r"in the majority of cases|in most cases", "usually", 0.75, 0.1, 0.6, None, Intensity.MODERATE),
+    WordyPattern("it_is_important_to_note_that", r"it is (?:important|essential|crucial) to note that|it should be noted that|it is worth noting that", "", 0.75, 0.12, 0.7, _sentence_initial_or_clause, Intensity.MODERATE),
     WordyPattern("in_the_process_of", r"in the process of", "", 0.6, 0.2, 0.4, None, Intensity.HEAVY),
     # Intensifiers / fillers: only modifying an adjective/adverb, never at light.
     WordyPattern("very", r"very", "", 0.6, 0.2, 0.3, _next_is_adj_or_adv, Intensity.MODERATE),
@@ -119,6 +134,7 @@ class WordinessRule(Rule):
                         confidence=p.confidence, meaning_risk=p.meaning_risk,
                         grammar_risk=0.1 if p.check else 0.05,
                         usefulness=p.usefulness, grammar_ok=note is None, note=note or "",
+                        priority=2,
                     )
                 )
         return out

@@ -65,6 +65,9 @@ class TestOllamaIntegration:
     @pytest.fixture(autouse=True)
     def _setup(self, default_config: RewriterConfig):
         self.backend = OllamaBackend(default_config)
+        if not self.backend.health_check():
+            self.backend.close()
+            pytest.skip(f"Ollama is not running or model {default_config.model_name!r} is not installed.")
         yield
         self.backend.close()
 

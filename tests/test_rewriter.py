@@ -122,6 +122,16 @@ class TestRewriterPipelineUnit:
 class TestRewriterPipelineIntegration:
     """End-to-end tests that require a running Ollama instance."""
 
+    @pytest.fixture(autouse=True)
+    def _setup(self, default_config: RewriterConfig):
+        from humanizer.llm_backend import OllamaBackend
+
+        backend = OllamaBackend(default_config)
+        if not backend.health_check():
+            backend.close()
+            pytest.skip(f"Ollama is not running or model {default_config.model_name!r} is not installed.")
+        backend.close()
+
     def test_rewrite_short_text(self):
         pipeline = RewriterPipeline()
         result = pipeline.rewrite_text(

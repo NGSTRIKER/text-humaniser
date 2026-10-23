@@ -63,6 +63,7 @@ FORMAL = frozenset({
     "commence", "terminate", "utilize", "endeavor", "ascertain", "facilitate",
     "whilst", "thereby", "henceforth", "aforementioned", "pursuant", "remuneration",
     "procure", "promulgate", "effectuate", "heretofore", "notwithstanding",
+    "menage", "mortal", "betwixt", "hitherto", "whence",
 })
 
 

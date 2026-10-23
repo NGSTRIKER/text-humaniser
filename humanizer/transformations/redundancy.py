@@ -49,6 +49,11 @@ PATTERNS: tuple[RedundantPattern, ...] = (
     RedundantPattern("repeat_again", r"(repeat|repeats|repeated|repeating) again", 0.1, 0.85),
     RedundantPattern("atm_machine", r"(ATM)s? machines?"),
     RedundantPattern("pin_number", r"(PIN) numbers?"),
+    RedundantPattern("gather_together", r"(gather|gathers|gathered|gathering) together"),
+    RedundantPattern("combine_together", r"(combine|combines|combined|combining) together"),
+    RedundantPattern("cooperate_together", r"(cooperate|cooperates|cooperated|cooperating) together"),
+    RedundantPattern("period_of_time", r"(period|periods) of time"),
+    RedundantPattern("necessary_or_needed", r"(necessary|needed) or (?:needed|necessary)"),
 )
 
 
@@ -77,6 +82,25 @@ class RedundantPhraseRule(Rule):
                     )
                 )
         out.extend(self._reason_is_because(ctx))
+        out.extend(self._move_forward(ctx))
+        return out
+
+    def _move_forward(self, ctx: RuleContext) -> list[Candidate]:
+        """'move forward towards/to' → 'move towards/to'."""
+        out = []
+        for m in ctx.finditer(r"move forward (towards|to)"):
+            original = m.group(0)
+            target = f"move {m.group(1)}"
+            out.append(
+                Candidate(
+                    rule_id="redundancy.move_forward",
+                    transform_type=self.transform_type,
+                    char_start=m.start(), char_end=m.end(), original=original,
+                    replacement=match_case(original, target),
+                    reason=f"{original!r} repeats direction; {target!r} is cleaner.",
+                    confidence=0.85, meaning_risk=0.05, grammar_risk=0.05, usefulness=0.6,
+                )
+            )
         return out
 
     def _reason_is_because(self, ctx: RuleContext) -> list[Candidate]:

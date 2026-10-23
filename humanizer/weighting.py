@@ -88,14 +88,17 @@ def gate(
 
 
 def _subsumed(candidates: list[Candidate]) -> tuple[list[Candidate], list[tuple[Candidate, str]]]:
-    """Drop a shorter edit fully inside a longer edit of the same kind."""
+    """Drop a shorter edit fully inside a longer edit."""
     keep, rejected = [], []
     for c in candidates:
         bigger = next(
             (d for d in candidates
-             if d is not c and d.transform_type == c.transform_type
+             if d is not c
              and d.char_start <= c.char_start and c.char_end <= d.char_end
-             and d.length > c.length and d.score >= c.score - 0.1),
+             and d.length > c.length
+             and (d.transform_type == c.transform_type
+                  or (d.transform_type in {"wordiness", "phrase", "redundancy"} and c.transform_type == "synonym"))
+             and d.score >= c.score - 0.25),
             None,
         )
         if bigger:

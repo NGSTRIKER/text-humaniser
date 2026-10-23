@@ -13,12 +13,27 @@ from humanizer.validation.base import CheckResult, Pair, Severity
 
 
 def lexical_overlap(pair: Pair) -> float:
+    from humanizer.validation.base import related
+
     def bag(doc):
         return {t.lemma.lower() for t in doc.tokens if not t.is_punct and not t.is_stop}
     a, b = bag(pair.original), bag(pair.rewritten)
     if not a and not b:
         return 1.0
-    return len(a & b) / len(a | b)
+    matched_b: set[str] = set()
+    matches = 0
+    for wa in a:
+        if wa in b:
+            matches += 1
+            matched_b.add(wa)
+        elif any(related(wa, wb, None) for wb in b if wb not in matched_b):
+            matches += 1
+            for wb in b:
+                if wb not in matched_b and related(wa, wb, None):
+                    matched_b.add(wb)
+                    break
+    total = len(a | b)
+    return matches / total if total > 0 else 1.0
 
 
 def embedding_similarity(original: str, rewritten: str, nlp: Any) -> Optional[float]:

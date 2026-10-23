@@ -47,6 +47,19 @@ LIGHT_VERBS = frozenset(
 )
 
 
+# Generic common nouns that should not be treated as protected domain terminology
+GENERIC_NOUNS = frozenset({
+    "thing", "way", "day", "man", "person", "people", "time", "year",
+    "part", "place", "case", "point", "group", "problem", "fact",
+    "feeling", "experience", "event", "situation", "issue", "individual",
+    "effect", "impact", "reaction", "response", "behavior", "action",
+    "thought", "emotion", "state", "aspect", "element", "area",
+    "type", "kind", "form", "sort", "level", "stage", "process",
+    "matter", "factor", "reason", "condition", "sense", "view",
+    "life", "support", "activity", "struggle", "conflict", "pain",
+})
+
+
 # Curated pairs WordNet lists as synonyms but whose connotation differs
 # (original lemma → alternatives that must not replace it).
 NOT_INTERCHANGEABLE: dict[str, frozenset[str]] = {
@@ -63,6 +76,10 @@ NOT_INTERCHANGEABLE: dict[str, frozenset[str]] = {
     "house": frozenset({"family", "firm"}),
     "plan": frozenset({"program", "programme", "design"}),
     "team": frozenset({"squad", "crew", "gang"}),
+    "person": frozenset({"mortal", "soul", "body", "party"}),
+    "family": frozenset({"menage", "house", "syndicate", "mob", "kinfolk", "kinsfolk", "kin"}),
+    "friend": frozenset({"acquaintance"}),
+    "support": frozenset({"reinforcement"}),
 }
 
 
@@ -173,7 +190,11 @@ class SynonymRule(Rule):
             lemma = tok.lemma.lower()
             prev = recent.get(lemma)
             recent[lemma] = tok.sentence_index
-            if prev is None or tok.sentence_index - prev > 1:
+            if prev is None:
+                continue
+            sent_dist = tok.sentence_index - prev
+            is_repeated = lemma in a.repeated_words and a.repeated_words[lemma] >= 2
+            if sent_dist > 3 and not (is_repeated and sent_dist <= 5):
                 continue
             if lemma in LIGHT_VERBS or lemma in core:
                 continue
@@ -188,7 +209,7 @@ class SynonymRule(Rule):
 
     @staticmethod
     def _core_concepts(ctx: RuleContext) -> set[str]:
-        """Nouns used ≥3 times across ≥2 sentences are treated as terminology."""
+        """Nouns used ≥3 times across ≥2 sentences are treated as terminology (unless generic)."""
         seen: dict[str, set[int]] = {}
         counts: dict[str, int] = {}
         for t in ctx.analysis.tokens:
@@ -196,7 +217,10 @@ class SynonymRule(Rule):
                 l = t.lemma.lower()
                 counts[l] = counts.get(l, 0) + 1
                 seen.setdefault(l, set()).add(t.sentence_index)
-        return {l for l, c in counts.items() if c >= 3 and (len(seen[l]) >= 2 or c >= 3)}
+        return {
+            l for l, c in counts.items()
+            if c >= 3 and (len(seen[l]) >= 2 or c >= 3) and l not in GENERIC_NOUNS
+        }
 
     # ── candidate generation + filtering ─────────────────────────
     def options_for(self, ctx: RuleContext, tok: TokenInfo) -> OptionReport:
@@ -285,7 +309,7 @@ class SynonymRule(Rule):
             return "different connotation (curated rule)"
         if cand in nearby:
             return "already used nearby (would create new repetition)"
-        if graph.lemma_count(cand, edge.target_sense_id) == 0:
+        if graph.total_count(cand, wn_pos) > 5 and graph.lemma_count(cand, edge.target_sense_id) == 0:
             return "rarely used in this sense"
         if graph.dominance(cand, edge.target_sense_id, wn_pos) < 0.15:
             return "usually means something else"
@@ -293,7 +317,7 @@ class SynonymRule(Rule):
             # Same meaning but a much rarer word for it ("team" 43 vs "squad" 4
             # in WordNet's counts) usually sounds off: skip it.
             src = graph.lemma_count(edge.source, edge.target_sense_id)
-            if src and graph.lemma_count(cand, edge.target_sense_id) < 0.25 * src:
+            if src > 10 and graph.total_count(cand, wn_pos) > 5 and graph.lemma_count(cand, edge.target_sense_id) < 0.25 * src:
                 return "much less common word for this meaning"
         reg = register_of(cand)
         casual = bool(style and style.allow_informal)

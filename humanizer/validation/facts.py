@@ -18,9 +18,10 @@ HEDGES = {"might", "may", "could", "possibly", "perhaps", "likely", "unlikely", 
           "suggests", "suggested", "appear", "appears", "seem", "seems", "potentially", "apparently", "somewhat"}
 STRONG = {"will", "must", "definitely", "certainly", "always", "prove", "proves", "proved", "clearly",
           "undoubtedly", "guarantee", "guarantees", "never"}
-CONDITIONS = ("if", "unless", "provided that", "as long as", "only if", "in case")
+CONDITIONS = ("if", "unless", "provided that", "as long as", "only if", "in case", "in the event that")
 CAUSAL = ("because", "therefore", "thus", "hence", "consequently", "as a result", "due to",
-          "caused", "causes", "cause", "causal", "leads to", "led to", "resulted in", "so that")
+          "owing to", "on account of", "the reason", "caused", "causes", "cause", "causal",
+          "leads to", "led to", "resulted in", "so that")
 COMPARATIVE = ("more", "less", "fewer", "most", "least", "than", "better", "worse")
 INTENSIFIERS = {"very", "extremely", "highly", "strong", "strongly", "significant", "significantly",
                 "major", "landmark", "huge", "massive", "dramatic", "dramatically", "groundbreaking",
@@ -129,9 +130,12 @@ def check_facts(pair: Pair) -> CheckResult:
     # conditions
     oc, rc = _count_phrases(o.text, CONDITIONS), _count_phrases(r.text, CONDITIONS)
     if oc != rc:
-        sev = Severity.CRITICAL if oc.get("unless", 0) != rc.get("unless", 0) or sum(oc.values()) != sum(rc.values()) else Severity.MAJOR
-        res.add("condition", sev, f"conditions changed ({dict(oc)} → {dict(rc)})",
-                repair="Keep every condition (if/unless) from the original.")
+        o_pos = sum(v for k, v in oc.items() if k != "unless")
+        r_pos = sum(v for k, v in rc.items() if k != "unless")
+        if oc.get("unless", 0) != rc.get("unless", 0) or o_pos != r_pos:
+            sev = Severity.CRITICAL
+            res.add("condition", sev, f"conditions changed ({dict(oc)} → {dict(rc)})",
+                    repair="Keep every condition (if/unless) from the original.")
 
     # causal claims
     ocs, rcs = _count_phrases(o.text, CAUSAL), _count_phrases(r.text, CAUSAL)
@@ -140,8 +144,9 @@ def check_facts(pair: Pair) -> CheckResult:
         res.add("causal", Severity.CRITICAL, f"causal claim added ({', '.join(added)})", None, ", ".join(added),
                 repair="Do not add cause-and-effect wording that the original does not state.")
     elif sum(rcs.values()) < sum(ocs.values()):
-        res.add("causal", Severity.MAJOR, f"causal wording removed ({', '.join(sorted(set(ocs) - set(rcs)) or ocs)})",
-                repair="Keep the cause-and-effect relationship stated in the original.")
+        if sum(rcs.values()) == 0:
+            res.add("causal", Severity.MAJOR, f"causal wording removed ({', '.join(sorted(set(ocs) - set(rcs)) or ocs)})",
+                    repair="Keep the cause-and-effect relationship stated in the original.")
 
     # comparisons
     ocm, rcm = _count_phrases(o.text, COMPARATIVE), _count_phrases(r.text, COMPARATIVE)
@@ -173,7 +178,11 @@ def check_additions_omissions(pair: Pair) -> CheckResult:
     def supported(lemma: str, pos: str) -> bool:
         if lemma in o_lemmas:
             return True
-        return any(related(lemma, ol, None) for ol, op in o_content.items() if op == pos or pos in {"ADJ", "ADV"})
+        return any(
+            related(lemma, ol, None)
+            for ol, op in o_content.items()
+            if op == pos or {op, pos} <= {"NOUN", "VERB", "ADJ"} or pos in {"ADJ", "ADV"}
+        )
 
     added = []
     for t in r.tokens:
@@ -196,8 +205,14 @@ def check_additions_omissions(pair: Pair) -> CheckResult:
     dispensable = {t.lemma.lower() for t in o.tokens if any(a <= t.char_start < b for a, b in skip)}
     important = [(lem, pos) for lem, pos in o_content.items()
                  if pos in {"NOUN", "PROPN", "VERB"} and lem not in {"be", "have", "do"} and lem not in dispensable]
-    lost = [lem for lem, pos in important
-            if lem not in r_lemmas and not any(related(lem, rl, None) for rl, rp in r_content if rp == pos)]
+    lost = [
+        lem for lem, pos in important
+        if lem not in r_lemmas and not any(
+            related(lem, rl, None)
+            for rl, rp in r_content
+            if rp == pos or {rp, pos} <= {"NOUN", "VERB", "ADJ"}
+        )
+    ]
     if important:
         res.score = round(1 - len(lost) / len(important), 3)
     for lem in lost:

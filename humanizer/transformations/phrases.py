@@ -23,15 +23,15 @@ class Nominalization:
 
 
 ITEMS: tuple[Nominalization, ...] = (
-    Nominalization("make_a_decision", ("make", "makes", "made", "making", "made"), r"a decision", ("decide", "decides", "decided", "deciding")),
-    Nominalization("come_to_a_conclusion", ("come", "comes", "came", "coming", "come"), r"to a conclusion", ("conclude", "concludes", "concluded", "concluding")),
+    Nominalization("make_a_decision", ("make", "makes", "made", "making", "made"), r"(?:a|the) decision", ("decide", "decides", "decided", "deciding")),
+    Nominalization("come_to_a_conclusion", ("come", "comes", "came", "coming", "come"), r"to (?:a|the) conclusion", ("conclude", "concludes", "concluded", "concluding")),
     Nominalization("give_consideration_to", ("give", "gives", "gave", "giving", "given"), r"(?:careful )?consideration to", ("consider", "considers", "considered", "considering")),
     Nominalization("take_into_consideration", ("take", "takes", "took", "taking", "taken"), r"into consideration", ("consider", "considers", "considered", "considering"), 0.15),
     Nominalization("conduct_an_investigation", ("conduct", "conducts", "conducted", "conducting", "conducted"), r"an investigation (?:into|of)", ("investigate", "investigates", "investigated", "investigating")),
     Nominalization("perform_an_analysis", ("perform", "performs", "performed", "performing", "performed"), r"an analysis of", ("analyze", "analyzes", "analyzed", "analyzing")),
     Nominalization("provide_assistance", ("provide", "provides", "provided", "providing", "provided"), r"assistance to", ("help", "helps", "helped", "helping"), 0.12),
     Nominalization("make_an_attempt", ("make", "makes", "made", "making", "made"), r"an attempt to", ("try to", "tries to", "tried to", "trying to")),
-    Nominalization("reach_an_agreement", ("reach", "reaches", "reached", "reaching", "reached"), r"an agreement", ("agree", "agrees", "agreed", "agreeing"), 0.12),
+    Nominalization("reach_an_agreement", ("reach", "reaches", "reached", "reaching", "reached"), r"(?:an|the) agreement", ("agree", "agrees", "agreed", "agreeing"), 0.12),
 )
 
 
@@ -67,6 +67,9 @@ class NominalizationRule(Rule):
         base, s3, past, ing, pp = item.forms
         prev = ctx.token_before(start)
         after_have = prev is not None and prev.lemma.lower() == "have"
+        if not after_have and prev is not None and prev.pos == "ADV":
+            prev2 = ctx.token_before(prev.char_start)
+            after_have = prev2 is not None and prev2.lemma.lower() == "have"
         if verb == pp and after_have:
             return item.target[2]
         if verb == base:

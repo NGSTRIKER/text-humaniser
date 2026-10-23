@@ -30,10 +30,15 @@ class Event:
 
 
 def extract_events(doc: DocumentAnalysis) -> list[Event]:
+    from humanizer.validation.base import dispensable_ranges
+    skip = dispensable_ranges(doc.text)
     events = []
     for s in doc.sentences:
         for c in s.clauses:
             if c.verb_lemma.lower() in LIGHT_VERBS:
+                continue
+            verb_tok = doc.tokens[c.verb_index] if 0 <= c.verb_index < len(doc.tokens) else None
+            if verb_tok and any(a <= verb_tok.char_start < b for a, b in skip):
                 continue
             if c.is_passive:
                 agent, patient = span_key(c.agent, doc), span_key(c.subject, doc)

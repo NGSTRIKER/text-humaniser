@@ -138,6 +138,10 @@ $("run").addEventListener("click", async () => {
       protected: $("protected").value.split(",").map((s) => s.trim()).filter(Boolean), tone: $("tone").value, style: $("style").value,
     });
     view = session.settings.mode === "rules" ? "rules" : "model";
+    if (session.settings.mode === "hybrid" && session.status === "failed") {
+      view = "rules";
+      showError("Local model is offline or unavailable. Showing rule-based rewrite.");
+    }
     $("final").value = view === "rules" ? session.rules_text : session.model_text;
     render();
   } catch (err) { showError(err.message); }
