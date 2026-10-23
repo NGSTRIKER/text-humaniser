@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rewriter — local review</title>
+  <meta name="description" content="Review, accept or undo each rewrite edit locally.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22M4 20h4L19 9l-4-4L4 16v4z%22 fill=%22%23b4441f%22/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="masthead">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M13 7l4 4" stroke="currentColor" stroke-width="1.8"/></svg>
+    <span>Rewriter</span><em>local review desk</em>
+  </div>
+  <div id="health" class="health" aria-live="polite">checking…</div>
+</header>
+
+<main>
+  <section class="compose card">
+    <label for="input" class="eyebrow">Your text</label>
+    <textarea id="input" rows="7" placeholder="Paste a paragraph to rewrite…"></textarea>
+    <div class="controls">
+      <label>Mode
+        <select id="mode">
+          <option value="hybrid">Rules → model → checks</option>
+          <option value="rules">Rules only (no model)</option>
+          <option value="llm">Model only + checks</option>
+        </select>
+      </label>
+      <label>Intensity
+        <select id="intensity"><option>light</option><option selected>moderate</option><option>heavy</option></select>
+      </label>
+      <label>Style
+        <select id="style"><option selected>neutral</option><option>casual</option><option>professional</option><option>academic</option></select>
+      </label>
+      <label>Meaning checks
+        <select id="strictness"><option>low</option><option selected>medium</option><option>high</option></select>
+      </label>
+      <label>Seed <input id="seed" type="number" placeholder="random" inputmode="numeric"></label>
+      <label class="grow">Keep unchanged <input id="protected" type="text" placeholder="comma-separated terms"></label>
+      <label class="grow">Tone <input id="tone" type="text" placeholder="keep the original tone"></label>
+      <button id="run" class="primary">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Rewrite
+      </button>
+    </div>
+    <p id="error" class="error" role="alert" hidden></p>
+  </section>
+
+  <section id="results" hidden>
+    <div class="toolbar">
+      <div class="tabs" role="tablist">
+        <button role="tab" data-view="rules" aria-selected="true">Rule edits</button>
+        <button role="tab" data-view="model" aria-selected="false">Model version</button>
+      </div>
+      <div class="undo">
+        <button id="undo" title="Undo last edit decision">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M9 7L4 12l5 5M4 12h11a5 5 0 010 10h-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Undo</button>
+        <button id="redo" title="Redo">Redo
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M15 7l5 5-5 5M20 12H9a5 5 0 000 10h2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+      </div>
+    </div>
+
+    <div class="sidebyside">
+      <article class="card">
+        <h2 class="eyebrow">Original</h2>
+        <div id="original" class="prose"></div>
+      </article>
+      <article class="card">
+        <h2 class="eyebrow" id="rewrite-title">Rewrite</h2>
+        <div id="rewrite" class="prose"></div>
+      </article>
+    </div>
+
+    <div class="lower">
+      <section class="card">
+        <h2 class="eyebrow">Edits <span id="edit-count" class="count"></span></h2>
+        <ol id="edits" class="edits"></ol>
+      </section>
+      <section class="card">
+        <h2 class="eyebrow">Checks &amp; warnings</h2>
+        <div id="checks"></div>
+      </section>
+    </div>
+
+    <section class="card finish">
+      <h2 class="eyebrow">Final text <span class="hint">edit freely before saving</span></h2>
+      <textarea id="final" rows="6"></textarea>
+      <div class="controls">
+        <button data-use="rules">Use rule version</button>
+        <button data-use="model">Use model version</button>
+        <button data-use="original">Use original</button>
+        <span class="spacer"></span>
+        <label>How natural? <select id="rating"><option value="">—</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
+        <input id="comment" type="text" placeholder="optional comment" class="grow">
+        <button id="accept" class="primary">Accept &amp; save</button>
+        <button id="reject" class="danger">Reject</button>
+      </div>
+      <p id="saved" class="saved" role="status" hidden></p>
+    </section>
+  </section>
+</main>
+<footer>Everything runs on this computer. Feedback is saved to a local file.</footer>
+<script src="/app.js"></script>
+</body>
+</html>

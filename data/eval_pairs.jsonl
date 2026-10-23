@@ -1,0 +1,18 @@
+{"id": "good_passive", "label": "good", "original": "John threw rocks into the lake.", "rewritten": "Rocks were thrown into the lake by John."}
+{"id": "good_filler", "label": "good", "original": "In order to finish the report, the team worked late on Friday.", "rewritten": "To finish the report, the team worked late on Friday."}
+{"id": "good_synonym", "label": "good", "original": "The results were very important for the company.", "rewritten": "The results were crucial for the company."}
+{"id": "good_reorder", "label": "good", "original": "The meeting was cancelled because of the storm.", "rewritten": "Because of the storm, the meeting was cancelled."}
+{"id": "good_combine", "label": "good", "original": "The server crashed. It restarted after five minutes.", "rewritten": "The server crashed and restarted after five minutes."}
+{"id": "good_numbers", "label": "good", "original": "Revenue rose 12% to $4.5 million in 2023.", "rewritten": "In 2023, revenue rose 12% to $4.5 million."}
+{"id": "good_modality", "label": "good", "original": "The drug may reduce symptoms in some patients.", "rewritten": "In some patients, the drug may reduce symptoms."}
+{"id": "good_wordy", "label": "good", "original": "Due to the fact that the road was closed, we took a different route.", "rewritten": "Because the road was closed, we took a different route."}
+{"id": "bad_negation", "label": "bad", "original": "The patient did not respond to the treatment.", "rewritten": "The patient responded to the treatment."}
+{"id": "bad_number", "label": "bad", "original": "Revenue rose 12% to $4.5 million in 2023.", "rewritten": "Revenue rose 21% to $4.5 million in 2023."}
+{"id": "bad_role", "label": "bad", "original": "The dog bit the man.", "rewritten": "The man bit the dog."}
+{"id": "bad_modality", "label": "bad", "original": "The drug may reduce symptoms in some patients.", "rewritten": "The drug reduces symptoms in all patients."}
+{"id": "bad_condition", "label": "bad", "original": "If the test passes, we will deploy on Monday.", "rewritten": "We will deploy on Monday."}
+{"id": "bad_causal", "label": "bad", "original": "Sales fell and the manager resigned.", "rewritten": "Sales fell because the manager resigned."}
+{"id": "bad_entity", "label": "bad", "original": "Maria sent the contract to Google on Tuesday.", "rewritten": "Maria sent the contract to Apple on Tuesday."}
+{"id": "bad_omission", "label": "bad", "original": "The bridge, which opened in 1998, carries 40,000 cars a day.", "rewritten": "The bridge carries many cars."}
+{"id": "bad_date", "label": "bad", "original": "The deadline is March 3, 2025.", "rewritten": "The deadline is March 13, 2025."}
+{"id": "bad_comparison", "label": "bad", "original": "Model A is faster than Model B.", "rewritten": "Model B is faster than Model A."}
