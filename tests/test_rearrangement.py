@@ -81,6 +81,20 @@ def test_split_comma_and():
     assert how == "comma-and"
 
 
+def test_split_comma_but():
+    text = "The committee reviewed the proposal in great detail over three days, but the board rejected the final budget on Friday."
+    out, how = split(text)
+    assert out == "The committee reviewed the proposal in great detail over three days. The board rejected the final budget on Friday."
+    assert how == "comma-but"
+
+
+def test_combine_medium_sentences():
+    a = "The committee carefully analyzed the complete financial statement."
+    b = "The committee presented their findings to the board."
+    out = combine(a, b)
+    assert out == "The committee carefully analyzed the complete financial statement and presented their findings to the board."
+
+
 def test_split_semicolon():
     text = "The committee reviewed the proposal in great detail over several days; the board approved the final budget afterwards."
     assert split(text)[0].count(".") == 2

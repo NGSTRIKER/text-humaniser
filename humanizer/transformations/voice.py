@@ -47,9 +47,9 @@ STATIVE = frozenset(
 )
 REFLEXIVE = frozenset({"myself", "yourself", "himself", "herself", "itself", "ourselves", "themselves"})
 BLOCKING_DEPS = frozenset(
-    {"dative", "ccomp", "xcomp", "conj", "csubj", "expl", "oprd", "attr", "acomp", "advcl", "parataxis"}
+    {"dative", "ccomp", "xcomp", "conj", "csubj", "expl", "oprd", "attr", "acomp", "parataxis"}
 )
-POST_DEPS_OK = frozenset({"prep", "advmod", "npadvmod", "punct", "prt"})
+POST_DEPS_OK = frozenset({"prep", "advmod", "npadvmod", "punct", "prt", "advcl"})
 
 
 @dataclass(frozen=True)
@@ -334,10 +334,19 @@ class VoiceRule(Rule):
                     ctx.analysis.tokens[t].lemma.lower() for t in sents[i - 1].token_indices
                 }
                 topical = obj.lemma_.lower() in prev_lemmas
-            if self.mode == "frequent" or topical:
+            is_consecutive_active = i > 0 and sents[i - 1].voice == "active"
+            allow_passive = (
+                self.mode == "frequent"
+                or topical
+                or ctx.intensity == Intensity.HEAVY
+            )
+            if allow_passive:
                 res = to_passive(sent.text)
                 if res.text:
-                    why = "object continues the previous sentence's topic" if topical else "voice variety"
+                    why = ("object continues the previous sentence's topic" if topical
+                           else "voice variety" if ctx.intensity == Intensity.HEAVY
+                           else "voice variety to break consecutive active sentences" if is_consecutive_active
+                           else "voice variety")
                     out.append(self._cand(sent, res.text, "active→passive",
                                           0.15 if topical else 0.18,
                                           f"Changed active voice to passive voice ({why})."))
@@ -350,6 +359,6 @@ class VoiceRule(Rule):
             char_start=sent.char_start, char_end=sent.char_end,
             original=sent.text, replacement=new, reason=reason,
             confidence=0.75, meaning_risk=risk, grammar_risk=0.15,
-            usefulness=0.5, context_fit=0.7, diversity_gain=0.4,
-            preserves_protected=True,
+            usefulness=0.6, context_fit=0.7, diversity_gain=0.6,
+            preserves_protected=True, priority=2,
         )

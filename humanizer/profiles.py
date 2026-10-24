@@ -14,7 +14,7 @@ from dataclasses import dataclass, field, replace
 
 from humanizer.config import Intensity, RewriterConfig
 
-LEXICAL_TYPES = frozenset({"synonym", "repetition", "phrase"})
+LEXICAL_TYPES = frozenset({"synonym", "repetition", "phrase", "modifier"})
 STRUCTURAL_TYPES = frozenset({"voice", "word_order", "sentence_structure", "paragraph_flow"})
 
 
@@ -63,11 +63,11 @@ PROFILES: dict[Intensity, IntensityProfile] = {
                           "sentence_structure": 0.0, "paragraph_flow": 0.0},
     ),
     # Moderate: readability, contextual vocabulary, selective restructuring.
-    Intensity.MODERATE: IntensityProfile(Intensity.MODERATE, 0.2, 15, 0.34, 0.5),
+    Intensity.MODERATE: IntensityProfile(Intensity.MODERATE, 0.2, 20, 0.45, 0.5),
     # Heavy: broader restructuring and variation, never more meaning risk than 0.35.
     Intensity.HEAVY: IntensityProfile(
-        Intensity.HEAVY, 0.35, 25, 0.6, 0.8, min_score_offset=-0.05,
-        type_multipliers={"synonym": 1.1, "sentence_structure": 1.1},
+        Intensity.HEAVY, 0.35, 35, 0.85, 0.8, min_score_offset=-0.05,
+        type_multipliers={"synonym": 1.1, "sentence_structure": 1.2, "voice": 1.2, "word_order": 1.2},
     ),
 }
 

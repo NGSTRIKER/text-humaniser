@@ -9,7 +9,9 @@ import pytest
 
 from humanizer.config import Intensity, RewriterConfig
 from humanizer.llm_backend import LLMError, LLMMemoryError, OllamaBackend
-from humanizer.llm_request import OUTPUT_SCHEMA, build_request, prompt_budget, suggestions_for_chunk
+from humanizer.llm_request import (
+    OUTPUT_SCHEMA, build_request, derive_structural_guidance, prompt_budget, suggestions_for_chunk,
+)
 from humanizer.llm_response import OutputFormatError, parse_response
 from humanizer.rewriter import RewriterPipeline
 from humanizer.schemas import EditRecord, RewriteRequest, RewriteStatus
@@ -201,3 +203,32 @@ def test_ollama_missing_model_gives_pull_hint():
     b = _backend(lambda r: httpx.Response(404, text='{"error":"model not found"}'))
     with pytest.raises(LLMError, match="ollama pull"):
         b.generate("hi")
+
+
+def test_derive_structural_guidance():
+    edits = [
+        EditRecord(edit_id="e1", char_start=0, char_end=15, original_span="In the morning",
+                   replacement="Later", rule_id="word_order.intro_to_end",
+                   transform_type="word_order", reason="moved intro phrase"),
+        EditRecord(edit_id="e2", char_start=20, char_end=40, original_span="The cake was eaten",
+                   replacement="She ate the cake", rule_id="voice.passive_to_active",
+                   transform_type="voice", reason="made active"),
+    ]
+    guidance = derive_structural_guidance(
+        edits, None, 0, 50, Intensity.HEAVY, sentence_reordering=True,
+    )
+    assert any("Phrase order" in g for g in guidance)
+    assert any("Voice" in g for g in guidance)
+    assert any("Restructuring goal" in g for g in guidance)
+    assert any("Paragraph structure" in g for g in guidance)
+
+
+def test_build_request_includes_structural_guidance():
+    req = build_request(
+        "Some text here.", CFG,
+        intensity=Intensity.HEAVY,
+        structural_guidance=["Vary sentence structure actively."],
+    )
+    payload = json.loads(req.to_prompt())
+    assert "structural_guidance" in payload
+    assert payload["structural_guidance"] == ["Vary sentence structure actively."]

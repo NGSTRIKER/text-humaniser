@@ -7,6 +7,7 @@ can be swapped for llama.cpp, vLLM, or a mock in tests.
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Optional, Protocol
 
@@ -97,12 +98,35 @@ class OllamaBackend:
         self._client = httpx.Client(
             base_url=self.config.ollama_base_url,
             timeout=httpx.Timeout(
-                connect=10.0,
-                read=self.config.request_timeout,
+                connect=15.0,
+                read=max(self.config.request_timeout, 300.0),
                 write=30.0,
-                pool=10.0,
+                pool=15.0,
             ),
         )
+
+    def unload_other_models(self) -> None:
+        """Unload inactive models from Ollama to keep memory within 8 GB hardware limits."""
+        try:
+            resp = self._client.get("/api/ps")
+            if resp.status_code == 200:
+                data = resp.json()
+                for m in data.get("models", []):
+                    name = m.get("name", "")
+                    if name and not (self.config.model_name in name or name in self.config.model_name):
+                        log.info("Unloading inactive model %r to free memory", name)
+                        self._client.post("/api/generate", json={"model": name, "keep_alive": 0})
+        except Exception as exc:
+            log.debug("Could not query or unload active models: %s", exc)
+
+    def close(self) -> None:
+        """Close client and optionally unload model from memory."""
+        if self.config.unload_model_on_close:
+            try:
+                self._client.post("/api/generate", json={"model": self.config.model_name, "keep_alive": 0})
+            except Exception:
+                pass
+        self._client.close()
 
     # ── Protocol methods ─────────────────────────────────────────
 
@@ -165,6 +189,8 @@ class OllamaBackend:
                 # Fix the context size so Ollama does not allocate a larger
                 # default KV cache than an 8 GB machine can afford.
                 "num_ctx": self.config.context_window,
+                "think": self.config.llm_think,
+                "thinking": self.config.llm_think,
             },
         }
         if self.config.num_threads:
@@ -177,6 +203,8 @@ class OllamaBackend:
         last_exc: Exception | None = None
         attempts = 1 + self.config.max_retries
 
+        self.unload_other_models()
+
         for attempt in range(1, attempts + 1):
             try:
                 t0 = time.monotonic()
@@ -185,7 +213,23 @@ class OllamaBackend:
                 resp.raise_for_status()
 
                 data = resp.json()
-                content = data.get("message", {}).get("content", "").strip()
+                msg = data.get("message", {})
+                content = msg.get("content", "").strip()
+                thinking = msg.get("thinking", "").strip()
+
+                # Clean any leaked <think> tags from content
+                if "<think>" in content:
+                    content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+
+                if not content and thinking:
+                    log.warning("Ollama returned thinking process but no final content (tokens exhausted or thinking mode enabled)")
+                    # If thinking contains valid JSON at the end, attempt recovery
+                    match = re.search(r"(\{.*\})", thinking, flags=re.DOTALL)
+                    if match:
+                        content = match.group(1).strip()
+                    else:
+                        raise LLMError("Model spent tokens thinking without producing final output. Thinking mode should be disabled for this model.")
+
                 if not content:
                     raise LLMError("Ollama returned an empty response.")
 
@@ -205,6 +249,7 @@ class OllamaBackend:
                     attempts,
                     exc,
                 )
+                break
             except httpx.HTTPStatusError as exc:
                 body = exc.response.text.lower() if exc.response is not None else ""
                 if any(k in body for k in _MEMORY_MARKERS):

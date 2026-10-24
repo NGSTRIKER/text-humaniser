@@ -28,7 +28,7 @@ from humanizer.config import Intensity
 from humanizer.context_analyzer import EmbeddingScorer, context_words, disambiguate
 from humanizer.logging_config import get_logger
 from humanizer.morphology import inflect
-from humanizer.transformations.base import Rule, RuleContext, match_case
+from humanizer.transformations.base import INTENSITY_ORDER, Rule, RuleContext, match_case
 from humanizer.word_graph import (
     INFORMAL,
     POS_MAP,
@@ -60,6 +60,13 @@ GENERIC_NOUNS = frozenset({
 })
 
 
+TECHNICAL_COMPOUNDS = frozenset({
+    "artificial intelligence", "machine learning", "deep learning",
+    "neural network", "neural networks", "computer vision",
+    "natural language processing", "data science",
+})
+
+
 # Curated pairs WordNet lists as synonyms but whose connotation differs
 # (original lemma → alternatives that must not replace it).
 NOT_INTERCHANGEABLE: dict[str, frozenset[str]] = {
@@ -76,11 +83,45 @@ NOT_INTERCHANGEABLE: dict[str, frozenset[str]] = {
     "house": frozenset({"family", "firm"}),
     "plan": frozenset({"program", "programme", "design"}),
     "team": frozenset({"squad", "crew", "gang"}),
-    "person": frozenset({"mortal", "soul", "body", "party"}),
+    "person": frozenset({"mortal", "soul", "body", "party", "organism", "living thing", "entity", "causal agent", "specimen"}),
+    "people": frozenset({"mortal", "soul", "body", "party", "organism", "living thing", "entity", "causal agent", "specimen", "organisms", "folks"}),
+    "human": frozenset({"organism", "hominid", "anthropoid", "animal"}),
     "family": frozenset({"menage", "house", "syndicate", "mob", "kinfolk", "kinsfolk", "kin"}),
     "friend": frozenset({"acquaintance"}),
     "support": frozenset({"reinforcement"}),
+    "adopt": frozenset({"espouse", "embrace", "sweep up"}),
+    "adopting": frozenset({"espousing", "embracing"}),
+    "implication": frozenset({"entailment"}),
+    "implications": frozenset({"entailments"}),
+    "pipeline": frozenset({"grapevine"}),
+    "pipelines": frozenset({"grapevines"}),
+    "productivity": frozenset({"productiveness"}),
+    "automate": frozenset({"automatize", "automatized"}),
+    "automated": frozenset({"automatize", "automatized"}),
+    "insight": frozenset({"brainstorm", "brainwave", "flash"}),
+    "insights": frozenset({"brainstorms", "brainwaves", "flashes"}),
+    "advancement": frozenset({"furtherance", "furtherances"}),
+    "conclusion": frozenset({"decision", "determination", "termination"}),
+    "approve": frozenset({"o.k.", "ok", "okay", "sanction"}),
+    "approved": frozenset({"o.k.ed", "oked", "ok'd", "sanctioned"}),
+    "artificial": frozenset({"affected", "unnatural", "insincere"}),
+    "modern": frozenset({"late"}),
 }
+
+ABSTRACT_TAXONOMY = frozenset({
+    "organism", "organisms", "living_thing", "animate_thing", "causal_agent",
+    "physical_entity", "entity", "entities", "substance", "matter", "artifact",
+    "instrumentality", "object", "objects", "unit", "units",
+})
+
+
+FORMAL_CLICHE_WORDS = frozenset({
+    "commence", "endeavor", "demonstrate", "illustrate", "enhance",
+    "comprehend", "obtain", "crucial", "fundamental", "significant",
+    "vital", "numerous", "sufficient", "attempt", "inquire",
+    "subsequent", "preceding", "ascertain", "paramount", "pivotal",
+    "imperative", "myriad", "plethora", "delve",
+})
 
 
 @dataclass
@@ -184,18 +225,21 @@ class SynonymRule(Rule):
         core = self._core_concepts(ctx)
         recent: dict[str, int] = {}   # lemma → last sentence index seen
         targets: list[TokenInfo] = []
+        is_heavy = ctx.intensity == Intensity.HEAVY
         for tok in a.tokens:
             if tok.pos not in POS_MAP or tok.is_stop or not tok.text.isalpha():
                 continue
             lemma = tok.lemma.lower()
             prev = recent.get(lemma)
             recent[lemma] = tok.sentence_index
-            if prev is None:
+            is_formal = lemma in FORMAL_CLICHE_WORDS and INTENSITY_ORDER[ctx.intensity] >= INTENSITY_ORDER[Intensity.MODERATE]
+            if prev is None and not is_formal and not is_heavy:
                 continue
-            sent_dist = tok.sentence_index - prev
-            is_repeated = lemma in a.repeated_words and a.repeated_words[lemma] >= 2
-            if sent_dist > 3 and not (is_repeated and sent_dist <= 5):
-                continue
+            if prev is not None and not is_heavy:
+                sent_dist = tok.sentence_index - prev
+                is_repeated = lemma in a.repeated_words and a.repeated_words[lemma] >= 2
+                if sent_dist > 3 and not (is_repeated and sent_dist <= 5) and not is_formal:
+                    continue
             if lemma in LIGHT_VERBS or lemma in core:
                 continue
             if tok.text[0].isupper() and a.sentences[tok.sentence_index].char_start != tok.char_start:
@@ -204,6 +248,9 @@ class SynonymRule(Rule):
                 continue
             if tok.dep == "compound" or any(a.tokens[c].dep == "compound" for c in tok.children):
                 continue  # part of a multi-word term
+            sent_text = a.sentences[tok.sentence_index].text.lower()
+            if any(tc in sent_text and tok.text.lower() in tc for tc in TECHNICAL_COMPOUNDS):
+                continue
             targets.append(tok)
         return targets
 
@@ -240,8 +287,6 @@ class SynonymRule(Rule):
             )
 
         allowed = {Relation.SYNONYM, Relation.SIMILAR}
-        if ctx.intensity == Intensity.HEAVY:
-            allowed.add(Relation.BROADER)
         antonyms = graph.antonyms(lemma, wn_pos)
         nearby = {
             t.lemma.lower() for t in ctx.analysis.tokens
@@ -303,6 +348,8 @@ class SynonymRule(Rule):
     ) -> Optional[str]:
         if " " in cand or "-" in cand:
             return "multi-word alternative"
+        if cand in ABSTRACT_TAXONOMY:
+            return "overly abstract or taxonomic term"
         if cand in antonyms:
             return "antonym"
         if cand in NOT_INTERCHANGEABLE.get(edge.source, frozenset()):

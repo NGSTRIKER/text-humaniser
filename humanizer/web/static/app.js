@@ -39,6 +39,13 @@ async function health() {
       el("span", { class: "dot" + (h.ollama ? " on" : "") }), `Model ${h.model}${h.ollama ? "" : " (offline)"}`,
       el("span", { class: "dot" + (h.analyzer ? " on" : "") }), h.analyzer ? "Analyzer ready" : "Analyzer missing",
     );
+    if (h.models && h.models.length > 0) {
+      const modelSelect = $("model");
+      if (modelSelect) {
+        const cur = modelSelect.value || h.model;
+        modelSelect.replaceChildren(...h.models.map(m => el("option", { value: m, ...(m === cur ? { selected: "selected" } : {}) }, m)));
+      }
+    }
     if (!h.ollama) $("mode").value = "rules";
   } catch { $("health").textContent = "server unreachable"; }
 }
@@ -133,9 +140,12 @@ $("run").addEventListener("click", async () => {
   btn.disabled = true; btn.lastChild.textContent = " Rewriting…"; showError(""); $("saved").hidden = true;
   try {
     session = await api("/api/rewrite", {
-      text: $("input").value, mode: $("mode").value, intensity: $("intensity").value,
+      text: $("input").value, mode: $("mode").value, model: $("model")?.value, intensity: $("intensity").value,
       strictness: $("strictness").value, seed: $("seed").value === "" ? null : Number($("seed").value),
       protected: $("protected").value.split(",").map((s) => s.trim()).filter(Boolean), tone: $("tone").value, style: $("style").value,
+      restructuring: $("restructuring")?.value || "medium",
+      vocabulary_variation: $("vocab")?.value || "medium",
+      sentence_reordering: Boolean($("reordering")?.checked),
     });
     view = session.settings.mode === "rules" ? "rules" : "model";
     if (session.settings.mode === "hybrid" && session.status === "failed") {
@@ -146,6 +156,23 @@ $("run").addEventListener("click", async () => {
     render();
   } catch (err) { showError(err.message); }
   finally { btn.disabled = false; btn.lastChild.textContent = " Rewrite"; }
+});
+
+$("intensity")?.addEventListener("change", (e) => {
+  const val = e.target.value;
+  if (val === "heavy") {
+    if ($("reordering")) $("reordering").checked = true;
+    if ($("restructuring")) $("restructuring").value = "high";
+    if ($("vocab")) $("vocab").value = "high";
+  } else if (val === "light") {
+    if ($("reordering")) $("reordering").checked = false;
+    if ($("restructuring")) $("restructuring").value = "low";
+    if ($("vocab")) $("vocab").value = "low";
+  } else {
+    if ($("reordering")) $("reordering").checked = false;
+    if ($("restructuring")) $("restructuring").value = "medium";
+    if ($("vocab")) $("vocab").value = "medium";
+  }
 });
 
 for (const t of document.querySelectorAll(".tabs button")) t.addEventListener("click", () => { view = t.dataset.view; render(); });

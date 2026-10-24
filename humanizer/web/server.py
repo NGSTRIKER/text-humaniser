@@ -82,14 +82,18 @@ class ReviewApp:
             return self._health()
         from humanizer import analyzer
         ollama = False
+        models: list[str] = []
         try:
             from humanizer.llm_backend import OllamaBackend
             b = OllamaBackend(self.config)
             ollama = b.health_check()
+            resp = b._client.get("/api/tags")
+            if resp.status_code == 200:
+                models = [m.get("name", "") for m in resp.json().get("models", [])]
             b._client.close()
         except Exception:
             pass
-        return {"ollama": ollama, "model": self.config.model_name, "analyzer": analyzer.is_available()}
+        return {"ollama": ollama, "model": self.config.model_name, "models": models, "analyzer": analyzer.is_available()}
 
     # ── actions ──────────────────────────────────────────────────
     def rewrite(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -118,10 +122,20 @@ class ReviewApp:
                                      "rules_enabled": mode != "llm", "seed": seed}
         if body.get("style") in ("neutral", "casual", "professional", "academic"):
             overrides["style"] = body["style"]
+        if body.get("model") and isinstance(body["model"], str) and body["model"].strip():
+            overrides["model_name"] = body["model"].strip()
         if body.get("tone"):
             overrides["tone"] = str(body["tone"])[:200]
         if body.get("strictness") in ("low", "medium", "high"):
             overrides["semantic_strictness"] = body["strictness"]
+        if body.get("vocabulary_variation") in ("low", "medium", "high"):
+            overrides["vocabulary_variation"] = body["vocabulary_variation"]
+        if body.get("restructuring") in ("low", "medium", "high"):
+            overrides["restructuring"] = body["restructuring"]
+        if "sentence_reordering" in body:
+            overrides["sentence_reordering"] = bool(body["sentence_reordering"])
+        elif intensity == Intensity.HEAVY:
+            overrides["sentence_reordering"] = True
         cfg = self.config.model_copy(update=overrides)
 
         with self._run_lock:
@@ -201,13 +215,16 @@ def _handler_for(app: ReviewApp) -> type[BaseHTTPRequestHandler]:
             log.debug("%s - %s", self.address_string(), fmt % args)
 
         def _send(self, status: int, payload: bytes, ctype: str) -> None:
-            self.send_response(status)
-            self.send_header("Content-Type", ctype)
-            self.send_header("Content-Length", str(len(payload)))
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(payload)
+            try:
+                self.send_response(status)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(payload)))
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(payload)
+            except (BrokenPipeError, ConnectionResetError):
+                log.debug("Client disconnected before response was sent")
 
         def _json(self, status: int, obj: Any) -> None:
             self._send(status, json.dumps(obj, ensure_ascii=False).encode(), "application/json; charset=utf-8")
@@ -230,6 +247,8 @@ def _handler_for(app: ReviewApp) -> type[BaseHTTPRequestHandler]:
                     return self._json(400, {"error": "invalid JSON"})
             try:
                 self._json(200, app.handle(method, self.path.split("?")[0], body))
+            except (BrokenPipeError, ConnectionResetError):
+                log.debug("Client connection dropped")
             except ApiError as exc:
                 self._json(exc.status, {"error": str(exc)})
             except Exception as exc:  # pragma: no cover - last resort

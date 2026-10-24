@@ -99,7 +99,23 @@ class EditHistory:
 
     def render(self) -> str:
         """Text with all accepted (and not user-rejected) edits applied."""
-        return apply_edits(self.original_text, self.accepted)
+        base_edits = [r for r in self.accepted if r.transform_type != "paragraph_flow"]
+        text = apply_edits(self.original_text, base_edits)
+        flow_edits = [r for r in self.accepted if r.transform_type == "paragraph_flow"]
+        if not flow_edits:
+            return text
+        return self._apply_flow_edits(text, flow_edits)
+
+    def _apply_flow_edits(self, text: str, flow_edits: list[EditRecord]) -> str:
+        ordered = sorted(flow_edits, key=lambda e: e.char_start, reverse=True)
+        for e in ordered:
+            if 0 <= e.char_start < len(text) and text[e.char_start : e.char_end] == e.original_span:
+                text = _splice(text, e.char_start, e.char_end, e.replacement)
+            else:
+                idx = text.find(e.original_span)
+                if idx != -1 and text.count(e.original_span) == 1:
+                    text = _splice(text, idx, idx + len(e.original_span), e.replacement)
+        return text
 
     def undo(self, edit_id: str) -> str:
         """Mark an edit as rejected by the user and return the new text."""

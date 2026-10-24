@@ -29,6 +29,12 @@
           <option value="llm">Model only + checks</option>
         </select>
       </label>
+      <label>Model
+        <select id="model">
+          <option value="qwen3.5:4b" selected>qwen3.5:4b</option>
+          <option value="qwen3.5:0.8b">qwen3.5:0.8b</option>
+        </select>
+      </label>
       <label>Intensity
         <select id="intensity"><option>light</option><option selected>moderate</option><option>heavy</option></select>
       </label>
@@ -37,6 +43,15 @@
       </label>
       <label>Meaning checks
         <select id="strictness"><option>low</option><option selected>medium</option><option>high</option></select>
+      </label>
+      <label>Restructuring
+        <select id="restructuring"><option>low</option><option selected>medium</option><option>high</option></select>
+      </label>
+      <label>Vocabulary
+        <select id="vocab"><option>low</option><option selected>medium</option><option>high</option></select>
+      </label>
+      <label class="checkbox-row" title="Allow swapping logically independent body sentences in paragraphs">
+        <input id="reordering" type="checkbox"> Paragraph reordering
       </label>
       <label>Seed <input id="seed" type="number" placeholder="random" inputmode="numeric"></label>
       <label class="grow">Keep unchanged <input id="protected" type="text" placeholder="comma-separated terms"></label>

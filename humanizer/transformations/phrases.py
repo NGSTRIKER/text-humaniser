@@ -32,6 +32,15 @@ ITEMS: tuple[Nominalization, ...] = (
     Nominalization("provide_assistance", ("provide", "provides", "provided", "providing", "provided"), r"assistance to", ("help", "helps", "helped", "helping"), 0.12),
     Nominalization("make_an_attempt", ("make", "makes", "made", "making", "made"), r"an attempt to", ("try to", "tries to", "tried to", "trying to")),
     Nominalization("reach_an_agreement", ("reach", "reaches", "reached", "reaching", "reached"), r"(?:an|the) agreement", ("agree", "agrees", "agreed", "agreeing"), 0.12),
+    Nominalization("make_an_assumption", ("make", "makes", "made", "making", "made"), r"(?:an|the) assumption", ("assume", "assumes", "assumed", "assuming")),
+    Nominalization("provide_an_explanation", ("provide", "provides", "provided", "providing", "provided"), r"(?:an|the) explanation", ("explain", "explains", "explained", "explaining")),
+    Nominalization("make_a_choice", ("make", "makes", "made", "making", "made"), r"(?:a|the) choice", ("choose", "chooses", "chose", "choosing")),
+    Nominalization("have_an_impact_on", ("have", "has", "had", "having", "had"), r"(?:an?|a significant|a major)? impact on", ("affect", "affects", "affected", "affecting")),
+    Nominalization("have_a_tendency_to", ("have", "has", "had", "having", "had"), r"(?:a )?tendency to", ("tend to", "tends to", "tended to", "tending to")),
+    Nominalization("make_improvements_to", ("make", "makes", "made", "making", "made"), r"improvements to", ("improve", "improves", "improved", "improving")),
+    Nominalization("put_emphasis_on", ("put", "puts", "put", "putting", "put"), r"emphasis on", ("emphasize", "emphasizes", "emphasized", "emphasizing")),
+    Nominalization("place_emphasis_on", ("place", "places", "placed", "placing", "placed"), r"emphasis on", ("emphasize", "emphasizes", "emphasized", "emphasizing")),
+    Nominalization("draw_a_conclusion", ("draw", "draws", "drew", "drawing", "drawn"), r"(?:a|the) conclusion", ("conclude", "concludes", "concluded", "concluding")),
 )
 
 

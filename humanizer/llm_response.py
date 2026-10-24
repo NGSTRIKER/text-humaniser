@@ -95,7 +95,7 @@ def parse_response(raw: str, request: LLMRewriteRequest) -> ParsedLLMOutput:
 
     if request.max_output_chars and len(text) > request.max_output_chars:
         raise OutputFormatError(f"output {len(text)} chars exceeds limit {request.max_output_chars}")
-    missing = [p for p in request.protected if p not in text]
+    missing = [p for p in request.protected if p not in text and p.lower() not in text.lower()]
     if missing:
         raise OutputFormatError(f"protected text missing: {missing}")
 

@@ -17,11 +17,11 @@ from typing import Any, Optional
 
 from humanizer.candidates import Candidate
 from humanizer.config import Intensity
-from humanizer.paragraph_flow import analyze_flow, swappable_pairs
+from humanizer.paragraph_flow import analyze_flow, swappable_pairs, swappable_paragraphs
 from humanizer.transformations.base import Rule, RuleContext
 from humanizer.transformations.syntax_utils import capitalize_first, parse, span_text, tidy
 
-MAX_COMBINE_WORDS = 12
+MAX_COMBINE_WORDS = 18
 MIN_SPLIT_WORDS = 18
 
 
@@ -96,7 +96,7 @@ def split(sentence: str) -> Optional[tuple[str, str]]:
             return tidy(f"{a}. {capitalize_first(b)}"), "semicolon"
     doc = parse(text)
     for tok in doc:
-        if tok.lower_ == "and" and tok.dep_ == "cc" and tok.i > 0 and doc[tok.i - 1].text == ",":
+        if tok.lower_ in {"and", "but"} and tok.dep_ == "cc" and tok.i > 0 and doc[tok.i - 1].text == ",":
             head = tok.head
             conj = next((c for c in head.children if c.dep_ == "conj" and c.i > tok.i), None)
             if head.dep_ != "ROOT" or conj is None or conj.pos_ not in {"VERB", "AUX"}:
@@ -107,7 +107,7 @@ def split(sentence: str) -> Optional[tuple[str, str]]:
             b = span_text(doc[tok.i + 1 :])
             if len(a.split()) < 5 or len(b.split()) < 5:
                 continue
-            return tidy(f"{a}. {capitalize_first(b)}"), "comma-and"
+            return tidy(f"{a}. {capitalize_first(b)}"), f"comma-{tok.lower_}"
     return None
 
 
@@ -157,7 +157,22 @@ class SentenceStructureRule(Rule):
                 out.append(self._cand(
                     s1.char_start, s2.char_end, ctx.text[s1.char_start : s2.char_end],
                     s2.text + gap + s1.text, "paragraph_flow.swap", 0.3,
-                    "Reordered two logically independent sentences.", transform="paragraph_flow",
+                    "Reordered two logically independent sentences within the paragraph.",
+                    transform="paragraph_flow",
+                ))
+            for p1, p2 in swappable_paragraphs(flow, a):
+                p1_start = sents[flow.paragraphs[p1][0]].char_start
+                p1_end = sents[flow.paragraphs[p1][-1]].char_end
+                p2_start = sents[flow.paragraphs[p2][0]].char_start
+                p2_end = sents[flow.paragraphs[p2][-1]].char_end
+                gap = ctx.text[p1_end:p2_start]
+                p1_text = ctx.text[p1_start:p1_end]
+                p2_text = ctx.text[p2_start:p2_end]
+                out.append(self._cand(
+                    p1_start, p2_end, ctx.text[p1_start:p2_end],
+                    p2_text + gap + p1_text, "paragraph_flow.paragraph_swap", 0.25,
+                    "Reordered two logically independent paragraphs to improve document flow.",
+                    transform="paragraph_flow",
                 ))
         return out
 
@@ -167,5 +182,6 @@ class SentenceStructureRule(Rule):
             rule_id=rule_id, transform_type=transform or self.transform_type,
             char_start=start, char_end=end, original=original, replacement=new,
             reason=reason, confidence=0.7, meaning_risk=risk, grammar_risk=0.12,
-            usefulness=0.45, context_fit=0.7, diversity_gain=0.5, preserves_protected=True,
+            usefulness=0.55, context_fit=0.7, diversity_gain=0.6, preserves_protected=True,
+            priority=2,
         )

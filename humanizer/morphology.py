@@ -91,8 +91,10 @@ def plural(noun: str) -> str:
         return IRREGULAR_PLURALS[noun]
     if re.search(r"[^aeiou]y$", noun):
         return noun[:-1] + "ies"
-    if re.search(r"(s|x|z|ch|sh)$", noun):
+    if re.search(r"(ss|x|z|ch|sh|us|as|is)$", noun) or noun in {"lens", "bus", "gas"}:
         return noun + "es"
+    if noun.endswith("s"):
+        return noun
     return noun + "s"
 
 

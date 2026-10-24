@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from humanizer.transformations.base import Rule, RuleContext
+from humanizer.transformations.modifiers import ModifierRule
 from humanizer.transformations.phrases import NominalizationRule
 from humanizer.transformations.redundancy import RedundantPhraseRule
 from humanizer.transformations.repetition import (
@@ -26,6 +27,7 @@ def default_rules(config: object | None = None) -> list[Rule]:
     rules: list[Rule] = [
         RedundantPhraseRule(),
         WordinessRule(),
+        ModifierRule(),
         DoubledWordRule(),
         RepeatedVocabularyRule(),
         RepeatedOpeningRule(),

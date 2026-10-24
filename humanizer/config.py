@@ -53,12 +53,12 @@ class RewriterConfig(BaseSettings):
         description="Maximum tokens the LLM may generate per request.",
     )
     context_window: int = Field(
-        default=4096,
+        default=2048,
         gt=0,
         description="Advertised context window of the chosen model (tokens).",
     )
     request_timeout: float = Field(
-        default=120.0,
+        default=300.0,
         gt=0,
         description="Seconds to wait for an Ollama response before timing out.",
     )
@@ -70,7 +70,7 @@ class RewriterConfig(BaseSettings):
 
     # ── Chunking ─────────────────────────────────────────────────
     max_prompt_tokens: int = Field(
-        default=1500,
+        default=160,
         gt=0,
         description=(
             "Max estimated tokens of *input text* per LLM request. "

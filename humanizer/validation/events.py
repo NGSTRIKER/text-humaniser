@@ -18,6 +18,11 @@ from humanizer.analyzer import DocumentAnalysis
 from humanizer.validation.base import CheckResult, Pair, Severity, related, span_key
 
 LIGHT_VERBS = {"be", "have", "do", "get", "make", "seem", "become"}
+PRONOUNS_AND_PROFORMS = frozenset({
+    "it", "this", "that", "these", "those", "they", "them", "there",
+    "something", "anything", "everything", "nothing", "what", "which", "who", "whom",
+    "event", "situation", "things",
+})
 
 
 @dataclass(frozen=True)
@@ -71,11 +76,17 @@ def check_events(pair: Pair) -> CheckResult:
                     f"roles reversed in '{e.predicate}': {e.agent} → {e.patient} became {best.agent} → {best.patient}",
                     e.text, best.text, repair=f"Keep '{e.agent}' as the one who does '{e.predicate}' to '{e.patient}'.")
         elif e.agent and best.agent is None and not _same(e.agent, best.patient):
-            res.add("role", Severity.MAJOR, f"agent '{e.agent}' of '{e.predicate}' dropped", e.text, best.text,
-                    repair=f"Say who did it: keep '{e.agent}' as the agent of '{e.predicate}'.")
+            if e.agent.lower() in PRONOUNS_AND_PROFORMS:
+                res.add("role", Severity.MINOR, f"agent pronoun '{e.agent}' of '{e.predicate}' dropped or altered", e.text, best.text)
+            else:
+                res.add("role", Severity.MAJOR, f"agent '{e.agent}' of '{e.predicate}' dropped", e.text, best.text,
+                        repair=f"Say who did it: keep '{e.agent}' as the agent of '{e.predicate}'.")
         elif e.patient and best.patient and not _same(e.patient, best.patient) and not _same(e.patient, best.agent):
-            res.add("role", Severity.MAJOR, f"object of '{e.predicate}' changed: {e.patient} → {best.patient}",
-                    e.text, best.text)
+            if e.patient.lower() in PRONOUNS_AND_PROFORMS or best.patient.lower() in PRONOUNS_AND_PROFORMS:
+                res.add("role", Severity.MINOR, f"object '{e.patient}' of '{e.predicate}' rephrased as {best.patient}", e.text, best.text)
+            else:
+                res.add("role", Severity.MAJOR, f"object of '{e.predicate}' changed: {e.patient} → {best.patient}",
+                        e.text, best.text)
         if e.negated != best.negated:
             # MAJOR, not critical: negation may legitimately move from the verb to a
             # determiner ("did not see any" → "no … were seen").  A real flip also

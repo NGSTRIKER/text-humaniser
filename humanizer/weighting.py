@@ -17,6 +17,7 @@ stops at the edit budget.  The probability each pick had is recorded.
 from __future__ import annotations
 
 import random
+import re
 from typing import Optional, Sequence
 
 from humanizer.candidates import Candidate, protection_conflict
@@ -108,6 +109,23 @@ def _subsumed(candidates: list[Candidate]) -> tuple[list[Candidate], list[tuple[
     return keep, rejected
 
 
+def _apply_word_to_replacement(text: str, orig: str, repl: str) -> str:
+    """Case-preserving replacement of a word inside replacement text."""
+    if not orig or not repl:
+        return text
+    pattern = re.compile(r"\b" + re.escape(orig) + r"\b", re.IGNORECASE)
+
+    def _sub(m: re.Match) -> str:
+        w = m.group(0)
+        if w.isupper() and len(w) > 1:
+            return repl.upper()
+        if w[0].isupper():
+            return repl.capitalize()
+        return repl
+
+    return pattern.sub(_sub, text, count=1)
+
+
 def select(
     candidates: list[Candidate],
     cfg: RewriterConfig,
@@ -141,16 +159,40 @@ def select(
             remaining = [c for c in remaining if c.transform_type not in STRUCTURAL_TYPES]
             if not remaining:
                 break
+
+        pool = (
+            [c for c in remaining if c.transform_type in STRUCTURAL_TYPES]
+            if (structural_limit is not None and structural_used < structural_limit)
+            else remaining
+        )
+        if not pool:
+            pool = remaining
+
         if cfg.deterministic:
-            pick = max(remaining, key=lambda c: (c.score, c.priority, c.length, -c.char_start))
+            pick = max(pool, key=lambda c: (c.score, c.priority, c.length, -c.char_start))
             pick.selection_probability = 1.0
         else:
-            probs = selection_probabilities([c.score for c in remaining], cfg.selection_method, temperature)
-            pick = weighted_choice(remaining, probs, rng)
-            pick.selection_probability = round(probs[remaining.index(pick)], 4)
+            probs = selection_probabilities([c.score for c in pool], cfg.selection_method, temperature)
+            pick = weighted_choice(pool, probs, rng)
+            pick.selection_probability = round(probs[pool.index(pick)], 4)
         selected.append(pick)
         if pick.transform_type in STRUCTURAL_TYPES:
             structural_used += 1
+
+        # If pick is structural, apply eligible word-level replacements inside pick.replacement
+        if pick.transform_type in STRUCTURAL_TYPES and pick.replacement:
+            for c in list(remaining):
+                if (
+                    c is not pick
+                    and pick.char_start <= c.char_start and c.char_end <= pick.char_end
+                    and c.replacement and c.original
+                    and c.transform_type in {"synonym", "modifier", "wordiness"}
+                ):
+                    updated = _apply_word_to_replacement(pick.replacement, c.original, c.replacement)
+                    if updated != pick.replacement:
+                        pick.replacement = updated
+                        pick.reason += f" (also updated '{c.original}' → '{c.replacement}')"
+
         keep = []
         for c in remaining:
             if c is pick:

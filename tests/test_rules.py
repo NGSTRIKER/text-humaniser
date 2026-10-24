@@ -152,6 +152,23 @@ def test_negation_and_numbers_preserved(engine):
     assert out.startswith("Because")
 
 
+# ── Modifiers ────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("The room was completely empty.", "The room was empty."),
+        ("She received an exact replica.", "She received a replica."),
+        ("They made a major breakthrough.", "They made a breakthrough."),
+        ("He gave a shout loudly in the hall.", "He gave a shout in the hall."),
+        ("They will merge together next month.", "They will merge next month."),
+    ],
+)
+def test_modifiers_positive(engine, text, expected):
+    assert run(engine, text) == expected
+
+
 def test_clean_text_unchanged(engine):
     text = "Maria finished the report on Tuesday. Her manager approved it."
     assert run(engine, text) == text

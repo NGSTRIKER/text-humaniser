@@ -96,3 +96,17 @@ def test_reordering_when_enabled_keeps_all_sentences():
     assert props
     for r in props:
         assert sorted(r.original_span.split(". ")) != [] and len(r.replacement) == len(r.original_span)
+
+
+def test_swappable_paragraphs():
+    from humanizer.paragraph_flow import swappable_paragraphs
+    text = (
+        "Artificial intelligence is transforming modern industries worldwide.\n\n"
+        "Automated data pipelines extract insights across thousands of documents.\n\n"
+        "Specialized neural models detect anomalies in complex imaging systems.\n\n"
+        "In conclusion, these technological advancements will redefine operations."
+    )
+    an = analyze(text)
+    rep = analyze_flow(an)
+    pairs = swappable_paragraphs(rep, an)
+    assert pairs == [(1, 2)]

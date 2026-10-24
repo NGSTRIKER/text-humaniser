@@ -21,7 +21,8 @@ from humanizer.config import Intensity
 from humanizer.edit_history import apply_edits
 from humanizer.llm_backend import LLMError, LLMMemoryError, OllamaBackend, get_system_prompt
 from humanizer.llm_request import (
-    OUTPUT_SCHEMA, SYSTEM_PROMPT, build_request, suggestions_for_chunk, summarize_analysis,
+    OUTPUT_SCHEMA, SYSTEM_PROMPT, build_request, derive_structural_guidance,
+    suggestions_for_chunk, summarize_analysis,
 )
 from humanizer.llm_response import REPAIR_INSTRUCTION, OutputFormatError, parse_response
 from humanizer.logging_config import get_logger
@@ -122,8 +123,16 @@ class RewriterPipeline:
                 success_count += 1
 
         # Reassemble — use rewritten text for successful chunks,
-        # original text for failed ones.
-        assembled = "\n\n".join(cr.rewritten_text for cr in chunk_results)
+        # original text for failed ones, preserving original separators between chunks.
+        assembled_parts = []
+        for i, cr in enumerate(chunk_results):
+            if i > 0:
+                prev_c = chunk_results[i - 1].chunk
+                curr_c = cr.chunk
+                sep = request.text[prev_c.char_end : curr_c.char_start]
+                assembled_parts.append(sep if sep else "\n\n")
+            assembled_parts.append(cr.rewritten_text)
+        assembled = "".join(assembled_parts)
 
         if success_count == len(chunks):
             status = RewriteStatus.SUCCESS
@@ -322,13 +331,20 @@ class RewriterPipeline:
         """JSON request → validated JSON reply, with format-repair retries."""
         t0 = time.monotonic()
         summary = summarize_analysis(self._last_analysis, chunk.char_start, chunk.char_end)
+        intensity_val = Intensity(request.intensity) if request.intensity else self.config.intensity
+        guidance = derive_structural_guidance(
+            edits, self._last_analysis, chunk.char_start, chunk.char_end,
+            intensity=intensity_val,
+            sentence_reordering=self.config.sentence_reordering,
+        )
         try:
             req = build_request(
                 chunk.text, self.config,
-                intensity=Intensity(request.intensity) if request.intensity else None,
+                intensity=intensity_val,
                 suggestions=suggestions_for_chunk(edits, chunk.char_start, chunk.char_end),
                 analysis_summary=summary,
                 protected_terms=request.protected_terms,
+                structural_guidance=guidance,
             )
         except ValueError as exc:
             log.error("Chunk %d not sent to the model: %s", chunk.index, exc)

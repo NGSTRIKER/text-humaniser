@@ -284,6 +284,17 @@ def _load_nlp_cached(model: str) -> Any:
     try:
         nlp = spacy.load(model)
     except OSError as exc:
+        if model in {"en_core_web_sm", "en_core_web_md", "en_core_web_lg"}:
+            try:
+                import spacy.cli
+
+                logger.info("spaCy model '%s' not found; attempting automatic download...", model)
+                spacy.cli.download(model)
+                nlp = spacy.load(model)
+                logger.info("Loaded spaCy model %s", model)
+                return nlp
+            except (SystemExit, Exception):
+                pass
         raise AnalyzerUnavailableError(
             f"spaCy model '{model}' is not installed. "
             f"Run: uv run python -m spacy download {model}"

@@ -199,3 +199,15 @@ def test_api_full_review_flow(server):
     status, summary = call(base, "/api/feedback/summary")
     assert summary["records"] == 1 and summary["verdicts"] == {"accept": 1}
     assert call(base, f"/api/session/{s['id']}/feedback", {"verdict": "nope"})[0] == 400
+
+
+@needs_spacy
+def test_api_accepts_structural_and_vocab_settings(server):
+    base, app = server
+    status, s = call(base, "/api/rewrite", {
+        "text": TEXT, "mode": "rules", "intensity": "heavy",
+        "restructuring": "high", "vocabulary_variation": "high",
+        "sentence_reordering": True, "seed": 1,
+    })
+    assert status == 200
+    assert "rules_text" in s

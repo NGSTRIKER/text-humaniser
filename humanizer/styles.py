@@ -49,7 +49,7 @@ PROFILES: dict[str, StyleProfile] = {
         "Academic tone with measured formality: precise, objective and well connected. "
         "No slang or contractions. Use a slightly more formal word only when it is more "
         "precise; do NOT replace ordinary words with complex ones for their own sake "
-        "(write 'use', not 'utilize'; 'team', not 'squad'). Keep sentences readable and "
+        "(write 'use', not 'utilize'; 'team', not 'squad'; write 'people' or 'participants', never 'organisms'). Keep sentences readable and "
         "keep hedges such as 'may' or 'suggests' exactly as strong as in the original.",
     ),
 }

@@ -35,6 +35,7 @@ class SentenceFlow:
     reasons: list[str] = field(default_factory=list)
     topic_overlap: float = 0.0     # share of content lemmas shared with previous sentence
     role: str = "body"             # intro | body | conclusion | single
+    has_conclusion_marker: bool = False
 
     @property
     def logically_independent(self) -> bool:
@@ -104,10 +105,21 @@ def analyze_flow(analysis: DocumentAnalysis) -> FlowReport:
                 {np_.text for np_ in analysis.sentences[idxs[pos - 1]].noun_phrases}
                 if pos > 0 else set()
             )
+            curr_sent = analysis.sentences[si]
             for pr in analysis.pronouns:
-                if pr.sentence_index == si and (set(pr.candidates) & prev_nps or not pr.candidates):
-                    reasons.append(f"pronoun {pr.text!r} refers back")
-                    break
+                if pr.sentence_index == si:
+                    is_possessive = pr.text.lower() in {"its", "their", "his", "her"}
+                    if is_possessive:
+                        curr_nps_before = {
+                            np_.text for np_ in curr_sent.noun_phrases
+                            if np_.char_end <= pr.char_start
+                        }
+                        has_local_antecedent = bool(set(pr.candidates) & curr_nps_before)
+                        if has_local_antecedent:
+                            continue
+                    if set(pr.candidates) & prev_nps or not pr.candidates:
+                        reasons.append(f"pronoun {pr.text!r} refers back")
+                        break
             # demonstratives / definite back-references
             if sent.token_indices:
                 first_tok = analysis.tokens[sent.token_indices[0]]
@@ -121,41 +133,129 @@ def analyze_flow(analysis: DocumentAnalysis) -> FlowReport:
                 overlap = len(prev & cur) / max(1, len(cur))
             if first_in_para:
                 reasons = [r for r in reasons if not r.startswith("pronoun")]  # nothing before it in paragraph
+            has_cm = any(low.startswith(c) for c in CONCLUSION_MARKERS)
             role = (
                 "single" if len(idxs) == 1
                 else "intro" if first_in_para
-                else "conclusion" if pos == len(idxs) - 1 or any(low.startswith(c) for c in CONCLUSION_MARKERS)
+                else "conclusion" if pos == len(idxs) - 1 or has_cm
                 else "body"
             )
             flows.append(
-                SentenceFlow(si, p, bool(reasons) and not first_in_para, reasons, round(overlap, 2), role)
+                SentenceFlow(
+                    si, p, bool(reasons) and not first_in_para, reasons,
+                    round(overlap, 2), role, has_conclusion_marker=has_cm,
+                )
             )
     flows.sort(key=lambda f: f.index)
     return FlowReport([paragraphs[p] for p in sorted(paragraphs)], flows, chrono)
 
 
-def swappable_pairs(report: FlowReport) -> list[tuple[int, int]]:
+def swappable_pairs(report: FlowReport, allow_short: bool = False) -> list[tuple[int, int]]:
     """Adjacent sentence pairs (i, i+1) that can be swapped without breaking flow.
 
-    Very conservative: paragraph must have ≥4 sentences and no chronology;
-    intro and conclusion stay in place; i, i+1 and i+2 must all be
-    logically independent.
+    Conservative: paragraph must have ≥4 sentences (or ≥2 if allow_short=True) and no chronology;
+    intro and conclusion stay in place (unless allow_short=True in short paragraphs);
+    i, i+1 and i+2 must all be logically independent.
     """
     pairs = []
     for p, idxs in enumerate(report.paragraphs):
-        if len(idxs) < 4 or report.has_chronology[p]:
+        if report.has_chronology[p]:
             continue
-        for k in range(1, len(idxs) - 2):
-            a, b = idxs[k], idxs[k + 1]
-            after = idxs[k + 2] if k + 2 < len(idxs) else None
-            sa, sb = report.sentences[a], report.sentences[b]
-            if sa.depends_on_previous or sb.depends_on_previous:
+        if not allow_short:
+            if len(idxs) < 4:
                 continue
-            if sa.role != "body" or sb.role != "body":
+            for k in range(1, len(idxs) - 2):
+                a, b = idxs[k], idxs[k + 1]
+                after = idxs[k + 2] if k + 2 < len(idxs) - 1 else None
+                sa, sb = report.sentences[a], report.sentences[b]
+                if sa.depends_on_previous or sb.depends_on_previous:
+                    continue
+                if sa.role != "body" or sb.role != "body":
+                    continue
+                if after is not None and report.sentences[after].depends_on_previous:
+                    continue
+                pairs.append((a, b))
+        else:
+            if len(idxs) < 2:
                 continue
-            if after is not None and report.sentences[after].depends_on_previous:
+            for k in range(0, len(idxs) - 1):
+                a, b = idxs[k], idxs[k + 1]
+                after = idxs[k + 2] if k + 2 < len(idxs) else None
+                sa, sb = report.sentences[a], report.sentences[b]
+                if sa.depends_on_previous or sb.depends_on_previous:
+                    continue
+                if sa.has_conclusion_marker or sb.has_conclusion_marker:
+                    continue
+                if len(idxs) >= 4:
+                    if k == 0 or b == idxs[-1]:
+                        continue
+                if after is not None and report.sentences[after].depends_on_previous:
+                    continue
+                pairs.append((a, b))
+    return pairs
+
+
+def swappable_paragraphs(report: FlowReport, analysis: DocumentAnalysis) -> list[tuple[int, int]]:
+    """Adjacent paragraph pairs (p, p+1) that can be swapped without breaking flow.
+
+    Conservative rules:
+    - Must have at least 2 paragraphs.
+    - If ≥3 paragraphs, intro paragraph (0) stays in place.
+    - Neither paragraph has chronology markers.
+    - Neither paragraph starts with a conclusion marker.
+    - Paragraph p+1 must not depend on paragraph p (no discourse markers connecting back,
+      no demonstratives or pronouns referring back).
+    - Paragraph p+2 (if present) must not depend on p+1.
+    """
+    pairs: list[tuple[int, int]] = []
+    n = len(report.paragraphs)
+    if n < 2:
+        return pairs
+
+    start_p = 1 if n >= 3 else 0
+    end_p = n - 1
+
+    for p in range(start_p, end_p):
+        p1, p2 = p, p + 1
+        if report.has_chronology[p1] or report.has_chronology[p2]:
+            continue
+
+        s1_first = analysis.sentences[report.paragraphs[p1][0]]
+        s2_first = analysis.sentences[report.paragraphs[p2][0]]
+
+        s1_text = s1_first.text.lower()
+        s2_text = s2_first.text.lower()
+
+        # Conclusion markers block reordering
+        if any(s2_text.startswith(cm) for cm in CONCLUSION_MARKERS) or any(s1_text.startswith(cm) for cm in CONCLUSION_MARKERS):
+            continue
+
+        # p2 must not start with discourse markers connecting back
+        has_dm = False
+        for m in s2_first.discourse_markers:
+            if m.char_start - s2_first.char_start <= 1:
+                has_dm = True
+                break
+        if has_dm:
+            continue
+
+        first_words = s2_text.split()
+        first_w = first_words[0] if first_words else ""
+        if first_w in BACK_REFERENCE_DETS or first_w in {"furthermore", "moreover", "however", "therefore", "additionally"}:
+            continue
+
+        # Check flow dependency of p2's first sentence
+        s2_flow = report.sentences[s2_first.index]
+        if s2_flow.depends_on_previous:
+            continue
+
+        # If there's a following paragraph, it must not depend on p2
+        if p2 + 1 < n:
+            s_next = analysis.sentences[report.paragraphs[p2 + 1][0]]
+            if report.sentences[s_next.index].depends_on_previous:
                 continue
-            pairs.append((a, b))
+
+        pairs.append((p1, p2))
     return pairs
 
 
